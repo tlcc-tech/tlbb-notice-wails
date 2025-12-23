@@ -1,6 +1,7 @@
 build/bin/
 build/dmg/
 build/installer/
+build/windows/installer/
 node_modules/
 frontend/dist/
 frontend/wailsjs/
