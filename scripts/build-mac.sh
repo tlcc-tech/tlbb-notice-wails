@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Release version
+VERSION="1.0.7"
+
 # Build macOS universal .app
-wails build -platform darwin/universal -clean
+wails build -platform darwin/universal -clean -ldflags "-X main.AppVersion=${VERSION}"
 
 # Optional: create .dmg (requires: brew install create-dmg)
 APP_NAME="怀旧天龙公告检测"

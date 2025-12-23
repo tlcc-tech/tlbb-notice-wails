@@ -1,7 +1,7 @@
 import './style.css';
 import './app.css';
 
-import { EventsOn } from '../wailsjs/runtime/runtime';
+import { EventsOn, WindowMinimise } from '../wailsjs/runtime/runtime';
 import { GetAppInfo, GetStatus, StartMonitoring, StopMonitoring } from '../wailsjs/go/main/App';
 
 document.querySelector('#app').innerHTML = `
@@ -12,6 +12,7 @@ document.querySelector('#app').innerHTML = `
             <input class="input" id="channelKey" type="text" autocomplete="off" placeholder="ChannelKey（可选，不填则不推送）" />
             <button class="btn" id="startBtn">开始监控</button>
             <button class="btn" id="stopBtn">结束监控</button>
+            <button class="btn" id="minToTrayBtn" style="display:none;">最小化到托盘</button>
         </div>
 
         <div class="result" id="status">状态：加载中...</div>
@@ -34,6 +35,7 @@ document.querySelector('#app').innerHTML = `
 const channelKeyEl = document.getElementById('channelKey');
 const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
+const minToTrayBtn = document.getElementById('minToTrayBtn');
 const statusEl = document.getElementById('status');
 const logEl = document.getElementById('log');
 const authorEl = document.getElementById('author');
@@ -48,6 +50,11 @@ function appendLog(line) {
 function setButtons(running) {
     startBtn.disabled = !!running;
     stopBtn.disabled = !running;
+
+    if (minToTrayBtn) {
+        minToTrayBtn.disabled = !running;
+        minToTrayBtn.style.display = running ? '' : 'none';
+    }
 }
 
 async function refreshStatus() {
@@ -77,6 +84,14 @@ stopBtn.addEventListener('click', async () => {
     try {
         StopMonitoring();
         await refreshStatus();
+    } catch (e) {
+        appendLog(String(e));
+    }
+});
+
+minToTrayBtn?.addEventListener('click', () => {
+    try {
+        WindowMinimise();
     } catch (e) {
         appendLog(String(e));
     }
