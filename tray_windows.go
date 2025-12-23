@@ -37,7 +37,6 @@ func setupTray(app *App) {
 						if app != nil && app.ctx != nil {
 							runtime.WindowShow(app.ctx)
 							runtime.WindowUnminimise(app.ctx)
-							runtime.WindowSetFocus(app.ctx)
 						}
 					case <-quitItem.ClickedCh:
 						if app != nil {
