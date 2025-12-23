@@ -2,9 +2,7 @@ import './style.css';
 import './app.css';
 
 import { EventsOn } from '../wailsjs/runtime/runtime';
-import { GetStatus, StartMonitoring, StopMonitoring } from '../wailsjs/go/main/App';
-
-const APP_VERSION = '1.0.0';
+import { GetAppInfo, GetStatus, StartMonitoring, StopMonitoring } from '../wailsjs/go/main/App';
 
 document.querySelector('#app').innerHTML = `
     <div class="container">
@@ -23,7 +21,7 @@ document.querySelector('#app').innerHTML = `
         <div class="footer">
             <div>说明：自动检测公告列表，新公告会打开浏览器进入公告页。</div>
             <div>操作：点击【开始监控】启动；需要推送则填写 ChannelKey；点击【结束监控】停止。</div>
-            <div>作者：怀旧天龙CC科技　版本：${APP_VERSION}</div>
+            <div>作者：<span id="author"></span>　版本：<span id="version"></span></div>
         </div>
     </div>
 `;
@@ -33,6 +31,8 @@ const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
 const statusEl = document.getElementById('status');
 const logEl = document.getElementById('log');
+const authorEl = document.getElementById('author');
+const versionEl = document.getElementById('version');
 
 function appendLog(line) {
     if (!line) return;
@@ -82,4 +82,10 @@ EventsOn('log', (line) => {
 });
 
 channelKeyEl.focus();
+GetAppInfo().then((info) => {
+    if (authorEl) authorEl.innerText = info.author || '';
+    if (versionEl) versionEl.innerText = info.version || '';
+}).catch((e) => {
+    appendLog(String(e));
+});
 refreshStatus();

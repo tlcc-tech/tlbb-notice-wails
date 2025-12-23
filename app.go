@@ -21,6 +21,7 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.monitor.Attach(ctx)
+	a.startAutoUpdateCheck()
 }
 
 func (a *App) StartMonitoring(channelKey string) error {
@@ -33,4 +34,8 @@ func (a *App) StopMonitoring() {
 
 func (a *App) GetStatus() MonitorStatus {
 	return a.monitor.Status()
+}
+
+func (a *App) GetAppInfo() AppInfo {
+	return AppInfo{Name: AppName, Author: AppAuthor, Version: AppVersion}
 }

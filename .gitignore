@@ -1,4 +1,6 @@
-build/
+build/bin/
+build/dmg/
+build/installer/
 node_modules/
 frontend/dist/
 frontend/wailsjs/
