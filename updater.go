@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"os/exec"
@@ -94,7 +95,13 @@ func (a *App) checkAndUpdate(ctx context.Context) error {
 	exeDir := filepath.Dir(exePath)
 
 	newPath := filepath.Join(exeDir, ".update-new.exe")
-	if err := downloadFile(ctx, asset.BrowserDownloadURL, newPath); err != nil {
+	if err := downloadFile(ctx, asset.BrowserDownloadURL, newPath, func(percent int, downloaded int64, total int64) {
+		if total > 0 {
+			a.emitLog("INFO", fmt.Sprintf("下载进度：%d%%（%s/%s）", percent, humanBytes(downloaded), humanBytes(total)))
+			return
+		}
+		a.emitLog("INFO", fmt.Sprintf("下载中：%s", humanBytes(downloaded)))
+	}); err != nil {
 		return err
 	}
 
@@ -160,7 +167,7 @@ func pickWindowsAsset(rel *githubRelease) (*releaseAsset, error) {
 	return nil, errors.New("未找到 windows-amd64.exe 更新包，请确认 Release 资产已上传")
 }
 
-func downloadFile(ctx context.Context, url string, dst string) error {
+func downloadFile(ctx context.Context, url string, dst string, onProgress func(percent int, downloaded int64, total int64)) error {
 	client := &http.Client{}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -185,10 +192,87 @@ func downloadFile(ctx context.Context, url string, dst string) error {
 	}
 	defer f.Close()
 
-	if _, err := io.Copy(f, resp.Body); err != nil {
-		return err
+	total := resp.ContentLength
+	if total <= 0 {
+		// GitHub 可能返回 chunked，无法得知总大小
+		total = -1
+	}
+
+	var downloaded int64
+	lastPercent := -1
+	lastLogAt := time.Time{}
+	lastLoggedBytes := int64(0)
+
+	buf := make([]byte, 32*1024)
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		n, readErr := resp.Body.Read(buf)
+		if n > 0 {
+			if _, err := f.Write(buf[:n]); err != nil {
+				return err
+			}
+			downloaded += int64(n)
+		}
+
+		now := time.Now()
+		if onProgress != nil {
+			if total > 0 {
+				percent := int(math.Floor(float64(downloaded) * 100 / float64(total)))
+				if percent > 100 {
+					percent = 100
+				}
+				// 节流：百分比变化 或 超过 2 秒未输出
+				if percent != lastPercent && (lastLogAt.IsZero() || now.Sub(lastLogAt) >= 500*time.Millisecond) {
+					onProgress(percent, downloaded, total)
+					lastPercent = percent
+					lastLogAt = now
+				}
+			} else {
+				// 无总大小：每增加 1MB 或超过 2 秒输出一次
+				if downloaded-lastLoggedBytes >= 1*1024*1024 || lastLogAt.IsZero() || now.Sub(lastLogAt) >= 2*time.Second {
+					onProgress(-1, downloaded, -1)
+					lastLoggedBytes = downloaded
+					lastLogAt = now
+				}
+			}
+		}
+
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return readErr
+		}
+	}
+
+	if onProgress != nil {
+		if total > 0 {
+			onProgress(100, downloaded, total)
+		} else {
+			onProgress(-1, downloaded, -1)
+		}
 	}
 	return nil
+}
+
+func humanBytes(n int64) string {
+	if n < 0 {
+		return "未知"
+	}
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%dB", n)
+	}
+	div, exp := float64(unit), 0
+	val := float64(n)
+	for val >= div*unit && exp < 4 {
+		div *= unit
+		exp++
+	}
+	pre := []string{"KB", "MB", "GB", "TB", "PB"}[exp]
+	return fmt.Sprintf("%.1f%s", val/div, pre)
 }
 
 func normalizeVersion(v string) string {

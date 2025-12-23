@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Release version
-VERSION="1.0.8"
+VERSION="1.0.9"
 
 # Build macOS universal .app
 wails build -platform darwin/universal -clean -ldflags "-X main.AppVersion=${VERSION}"
