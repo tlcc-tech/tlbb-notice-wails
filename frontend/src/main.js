@@ -1,8 +1,8 @@
 import './style.css';
 import './app.css';
 
-import { EventsOn, WindowMinimise } from '../wailsjs/runtime/runtime';
-import { GetAppInfo, GetStatus, StartMonitoring, StopMonitoring } from '../wailsjs/go/main/App';
+import { EventsOn, WindowHide } from '../wailsjs/runtime/runtime';
+import { GetAppInfo, GetStatus, QuitApp, StartMonitoring, StopMonitoring } from '../wailsjs/go/main/App';
 
 document.querySelector('#app').innerHTML = `
     <div class="container">
@@ -30,6 +30,18 @@ document.querySelector('#app').innerHTML = `
             </div>
         </div>
     </div>
+
+    <div class="modal-mask" id="closePromptMask" style="display:none;">
+        <div class="modal">
+            <div class="modal-title">提示</div>
+            <div class="modal-content">当前正在监控，是否最小化到托盘？</div>
+            <div class="modal-actions">
+                <button class="btn" id="closePromptMinBtn">最小化到托盘</button>
+                <button class="btn" id="closePromptExitBtn">退出软件</button>
+                <button class="btn" id="closePromptCancelBtn">取消</button>
+            </div>
+        </div>
+    </div>
 `;
 
 const channelKeyEl = document.getElementById('channelKey');
@@ -40,6 +52,11 @@ const statusEl = document.getElementById('status');
 const logEl = document.getElementById('log');
 const authorEl = document.getElementById('author');
 const versionEl = document.getElementById('version');
+
+const closePromptMask = document.getElementById('closePromptMask');
+const closePromptMinBtn = document.getElementById('closePromptMinBtn');
+const closePromptExitBtn = document.getElementById('closePromptExitBtn');
+const closePromptCancelBtn = document.getElementById('closePromptCancelBtn');
 
 function appendLog(line) {
     if (!line) return;
@@ -89,16 +106,51 @@ stopBtn.addEventListener('click', async () => {
     }
 });
 
+function showClosePrompt() {
+    if (closePromptMask) closePromptMask.style.display = '';
+}
+
+function hideClosePrompt() {
+    if (closePromptMask) closePromptMask.style.display = 'none';
+}
+
 minToTrayBtn?.addEventListener('click', () => {
     try {
-        WindowMinimise();
+        WindowHide();
     } catch (e) {
         appendLog(String(e));
     }
 });
 
+closePromptMinBtn?.addEventListener('click', () => {
+    hideClosePrompt();
+    try {
+        WindowHide();
+    } catch (e) {
+        appendLog(String(e));
+    }
+});
+
+closePromptExitBtn?.addEventListener('click', async () => {
+    hideClosePrompt();
+    try {
+        await QuitApp();
+    } catch (e) {
+        appendLog(String(e));
+    }
+});
+
+closePromptCancelBtn?.addEventListener('click', () => {
+    hideClosePrompt();
+});
+
 EventsOn('log', (line) => {
     appendLog(line);
+});
+
+// 后端拦截关闭按钮时触发
+EventsOn('app:close-requested', () => {
+    showClosePrompt();
 });
 
 channelKeyEl.focus();

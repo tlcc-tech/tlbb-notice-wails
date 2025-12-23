@@ -109,3 +109,44 @@
   border: none;
   background-color: rgba(255, 255, 255, 1);
 }
+
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(27, 38, 54, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.modal {
+  width: min(520px, calc(100vw - 32px));
+  background-color: rgba(240, 240, 240, 1);
+  border-radius: 6px;
+  padding: 14px 14px 12px;
+  box-sizing: border-box;
+  color: #333333;
+  text-align: left;
+}
+
+.modal-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.modal-content {
+  margin-bottom: 12px;
+  line-height: 1.6;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.modal .btn {
+  margin: 0;
+}
