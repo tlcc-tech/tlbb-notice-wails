@@ -5,8 +5,8 @@ package main
 var AppVersion = "dev"
 
 const (
-	AppName   = "怀旧天龙公告检测"
-	AppAuthor = "怀旧天龙CC科技"
+	AppName         = "怀旧天龙公告检测"
+	AppAuthor       = "怀旧天龙CC科技"
 	UpdateRepoOwner = "tlcc-tech"
 	UpdateRepoName  = "tlbb-notice-wails"
 )

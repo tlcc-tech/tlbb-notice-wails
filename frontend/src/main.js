@@ -19,9 +19,14 @@ document.querySelector('#app').innerHTML = `
         <textarea class="log" id="log" readonly spellcheck="false"></textarea>
 
         <div class="footer">
-            <div>说明：自动检测公告列表，新公告会打开浏览器进入公告页。</div>
-            <div>操作：点击【开始监控】启动；需要推送则填写 ChannelKey；点击【结束监控】停止。</div>
-            <div>作者：<span id="author"></span>　版本：<span id="version"></span></div>
+            <div class="footer-left">
+                <div>说明：自动检测公告列表，新公告会打开浏览器进入公告页。</div>
+                <div>操作：点击【开始监控】启动；需要推送则填写 ChannelKey；点击【结束监控】停止。</div>
+                <div>作者：<span id="author"></span>　版本：<span id="version"></span></div>
+            </div>
+            <div class="footer-right">
+                <img class="footer-img" src="/qrcode.jpg" alt="qrcode" />
+            </div>
         </div>
     </div>
 `;
