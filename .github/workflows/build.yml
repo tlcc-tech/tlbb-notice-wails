@@ -1,0 +1,74 @@
+name: build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Wails
+        shell: bash
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+          echo "${HOME}/go/bin" >> $GITHUB_PATH
+
+      - name: Build (macOS)
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          wails build -platform darwin/universal -clean
+
+      - name: Build (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          wails build -platform windows/amd64 -clean
+
+      - name: Create DMG (macOS, optional)
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          brew install create-dmg
+          APP_NAME="怀旧天龙公告检测"
+          APP_PATH="build/bin/${APP_NAME}.app"
+          DMG_PATH="build/bin/${APP_NAME}.dmg"
+          rm -rf build/dmg
+          mkdir -p build/dmg
+          cp -R "${APP_PATH}" build/dmg/
+          create-dmg --volname "${APP_NAME}" \
+            --volicon "${APP_PATH}/Contents/Resources/iconfile.icns" \
+            --app-drop-link 300 180 \
+            "${DMG_PATH}" \
+            build/dmg
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}-build
+          path: build/bin/**

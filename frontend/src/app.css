@@ -1,0 +1,79 @@
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px 16px;
+  box-sizing: border-box;
+}
+
+.title {
+  margin: 12px 0 20px;
+  font-weight: 600;
+}
+
+.result {
+  height: 20px;
+  line-height: 20px;
+  margin: 1.5rem auto;
+}
+
+.log {
+  width: 100%;
+  height: calc(100vh - 300px);
+  min-height: 280px;
+  box-sizing: border-box;
+  resize: none;
+  border: none;
+  border-radius: 6px;
+  padding: 12px;
+  outline: none;
+  background-color: rgba(240, 240, 240, 1);
+  color: #333333;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  text-align: left;
+}
+
+.footer {
+  margin-top: 12px;
+  line-height: 1.6;
+  opacity: 0.9;
+  font-size: 14px;
+  text-align: left;
+}
+
+.input-box .btn {
+  width: 60px;
+  height: 30px;
+  line-height: 30px;
+  border-radius: 3px;
+  border: none;
+  margin: 0 0 0 20px;
+  padding: 0 8px;
+  cursor: pointer;
+}
+
+.input-box .btn:hover {
+  background-image: linear-gradient(to top, #cfd9df 0%, #e2ebf0 100%);
+  color: #333333;
+}
+
+.input-box .input {
+  border: none;
+  border-radius: 3px;
+  outline: none;
+  height: 30px;
+  line-height: 30px;
+  padding: 0 10px;
+  background-color: rgba(240, 240, 240, 1);
+  -webkit-font-smoothing: antialiased;
+}
+
+.input-box .input:hover {
+  border: none;
+  background-color: rgba(255, 255, 255, 1);
+}
+
+.input-box .input:focus {
+  border: none;
+  background-color: rgba(255, 255, 255, 1);
+}

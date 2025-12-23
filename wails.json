@@ -1,0 +1,13 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "怀旧天龙公告检测",
+  "outputfilename": "tlbb-notice-wails",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "怀旧天龙CC科技",
+    "email": "rd091019@gmail.com"
+  }
+}
