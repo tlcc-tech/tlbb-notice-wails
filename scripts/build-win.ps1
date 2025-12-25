@@ -3,6 +3,6 @@
 
 $ErrorActionPreference = "Stop"
 
-$Version = "1.0.9"
+$Version = "1.0.10"
 wails build -platform windows/amd64 -clean -ldflags "-X main.AppVersion=$Version"
 Write-Host "Build output is under build/bin/"

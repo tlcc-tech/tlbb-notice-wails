@@ -19,6 +19,7 @@ import (
 
 const (
 	announceListURL = "http://tlhj.changyou.com/tlhj/newslist/announce/announce.shtml"
+	activityJSONURL = "https://event.changyou.com/cycms/tlhj/banner/main1.json"
 	minIntervalSec  = 300
 	maxIntervalSec  = 600
 
@@ -26,9 +27,11 @@ const (
 )
 
 type MonitorStatus struct {
-	Running     bool   `json:"running"`
-	LastTitle   string `json:"lastTitle"`
-	LastChecked string `json:"lastChecked"`
+	Running           bool   `json:"running"`
+	LastTitle         string `json:"lastTitle"`
+	LastActivityTitle string `json:"lastActivityTitle"`
+	LastActivityLink  string `json:"lastActivityLink"`
+	LastChecked       string `json:"lastChecked"`
 }
 
 type Monitor struct {
@@ -39,9 +42,11 @@ type Monitor struct {
 	running bool
 	cancel  context.CancelFunc
 
-	channelKey  string
-	lastTitle   string
-	lastChecked time.Time
+	channelKey   string
+	lastTitle    string
+	lastActTitle string
+	lastActLink  string
+	lastChecked  time.Time
 
 	httpClient *http.Client
 	rng        *rand.Rand
@@ -65,8 +70,10 @@ func (m *Monitor) Status() MonitorStatus {
 	defer m.mu.Unlock()
 
 	status := MonitorStatus{
-		Running:   m.running,
-		LastTitle: m.lastTitle,
+		Running:           m.running,
+		LastTitle:         m.lastTitle,
+		LastActivityTitle: m.lastActTitle,
+		LastActivityLink:  m.lastActLink,
 	}
 	if !m.lastChecked.IsZero() {
 		status.LastChecked = m.lastChecked.Format(time.RFC3339)
@@ -91,7 +98,7 @@ func (m *Monitor) Start(channelKey string) error {
 
 	m.emitLog(appCtx, "INFO", "监控已启动")
 	if channelKey == "" {
-		m.emitLog(appCtx, "WARN", "未填写 ChannelKey：将跳过微信推送，仅打开公告链接")
+		m.emitLog(appCtx, "WARN", "未填写 ChannelKey：将跳过微信推送，仅打开链接")
 	}
 
 	go func() {
@@ -149,63 +156,104 @@ func (m *Monitor) randomIntervalSec() int {
 }
 
 func (m *Monitor) checkOnce(ctx context.Context, appCtx context.Context) error {
-	title, link, err := m.fetchLatest(ctx)
+	announceTitle, announceLink, announceErr := m.fetchLatestAnnouncement(ctx)
+	actTitle, actLink, actErr := m.fetchLatestActivity(ctx)
+
+	now := time.Now()
 
 	m.mu.Lock()
-	m.lastChecked = time.Now()
-	previousTitle := m.lastTitle
+	m.lastChecked = now
+	previousAnnounceTitle := m.lastTitle
+	previousActTitle := m.lastActTitle
 	channelKey := m.channelKey
-	if previousTitle == "" && title != "" {
-		m.lastTitle = title
+	if previousAnnounceTitle == "" && announceTitle != "" {
+		m.lastTitle = announceTitle
+	}
+	if previousActTitle == "" && actTitle != "" {
+		m.lastActTitle = actTitle
+		m.lastActLink = actLink
 	}
 	m.mu.Unlock()
 
-	if err != nil {
-		return err
+	if announceErr != nil {
+		m.emitLog(appCtx, "ERROR", "公告检查失败: "+announceErr.Error())
 	}
-	if title == "" {
+	if actErr != nil {
+		m.emitLog(appCtx, "ERROR", "活动检查失败: "+actErr.Error())
+	}
+	if announceErr != nil && actErr != nil {
+		return errors.New("公告与活动检查均失败")
+	}
+
+	// 公告
+	if announceTitle == "" {
 		m.emitLog(appCtx, "WARN", "未找到最新公告标题")
-		return nil
-	}
-
-	if previousTitle == "" {
-		m.emitLog(appCtx, "INFO", "已获取当前最新公告(基线): "+title)
-		return nil
-	}
-
-	if title == previousTitle {
-		m.emitLog(appCtx, "INFO", "公告标题未发生变化: "+title)
-		return nil
-	}
-
-	m.emitLog(appCtx, "INFO", "检测到新公告: "+title)
-
-	m.mu.Lock()
-	m.lastTitle = title
-	m.mu.Unlock()
-
-	if link != "" {
-		runtime.BrowserOpenURL(appCtx, link)
-		m.emitLog(appCtx, "INFO", "已打开公告链接: "+link)
+	} else if previousAnnounceTitle == "" {
+		m.emitLog(appCtx, "INFO", "已获取当前最新公告(基线): "+announceTitle)
+	} else if announceTitle == previousAnnounceTitle {
+		m.emitLog(appCtx, "INFO", "公告标题未发生变化: "+announceTitle)
 	} else {
-		m.emitLog(appCtx, "WARN", "未解析到公告链接")
+		m.emitLog(appCtx, "INFO", "检测到新公告: "+announceTitle)
+
+		m.mu.Lock()
+		m.lastTitle = announceTitle
+		m.mu.Unlock()
+
+		if announceLink != "" {
+			runtime.BrowserOpenURL(appCtx, announceLink)
+			m.emitLog(appCtx, "INFO", "已打开公告链接: "+announceLink)
+		} else {
+			m.emitLog(appCtx, "WARN", "未解析到公告链接")
+		}
+
+		if strings.TrimSpace(channelKey) == "" {
+			m.emitLog(appCtx, "INFO", "未配置 ChannelKey，已跳过微信推送")
+		} else {
+			if err := m.sendWechatPush(ctx, channelKey, "天龙发公告了", announceTitle); err != nil {
+				m.emitLog(appCtx, "ERROR", "微信推送失败: "+err.Error())
+			} else {
+				m.emitLog(appCtx, "INFO", "微信推送发送成功")
+			}
+		}
 	}
 
-	if strings.TrimSpace(channelKey) == "" {
-		m.emitLog(appCtx, "INFO", "未配置 ChannelKey，已跳过微信推送")
-		return nil
-	}
+	// 活动（主页 swiper_news 第一个链接）
+	if actTitle == "" {
+		m.emitLog(appCtx, "WARN", "未找到最新活动标题")
+	} else if previousActTitle == "" {
+		m.emitLog(appCtx, "INFO", "已获取当前最新活动(基线): "+actTitle)
+	} else if actTitle == previousActTitle {
+		m.emitLog(appCtx, "INFO", "活动标题未发生变化: "+actTitle)
+	} else {
+		m.emitLog(appCtx, "INFO", "检测到新活动: "+actTitle)
 
-	if err := m.sendWechatPush(ctx, channelKey, title); err != nil {
-		m.emitLog(appCtx, "ERROR", "微信推送失败: "+err.Error())
-		return nil
+		m.mu.Lock()
+		m.lastActTitle = actTitle
+		m.lastActLink = actLink
+		m.mu.Unlock()
+
+		if actLink != "" {
+			runtime.BrowserOpenURL(appCtx, actLink)
+			m.emitLog(appCtx, "INFO", "已打开活动链接: "+actLink)
+		} else {
+			m.emitLog(appCtx, "WARN", "未解析到活动链接")
+		}
+
+		if strings.TrimSpace(channelKey) == "" {
+			m.emitLog(appCtx, "INFO", "未配置 ChannelKey，已跳过微信推送")
+		} else {
+			if err := m.sendWechatPush(ctx, channelKey, "天龙有新活动了", actTitle); err != nil {
+				m.emitLog(appCtx, "ERROR", "微信推送失败: "+err.Error())
+			} else {
+				m.emitLog(appCtx, "INFO", "微信推送发送成功")
+			}
+		}
 	}
-	m.emitLog(appCtx, "INFO", "微信推送发送成功")
 
 	return nil
 }
 
-func (m *Monitor) fetchLatest(ctx context.Context) (title string, link string, err error) {
+func (m *Monitor) fetchLatestAnnouncement(ctx context.Context) (title string, link string, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, announceListURL, nil)
 	if err != nil {
 		return "", "", err
@@ -252,16 +300,56 @@ func (m *Monitor) fetchLatest(ctx context.Context) (title string, link string, e
 	return title, link, nil
 }
 
-func (m *Monitor) sendWechatPush(ctx context.Context, channelKey string, title string) error {
+func (m *Monitor) fetchLatestActivity(ctx context.Context) (title string, link string, err error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, activityJSONURL, nil)
+	if err != nil {
+		return "", "", err
+	}
+
+	resp, err := m.httpClient.Do(req)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return "", "", errors.New("HTTP " + resp.Status + ": " + strings.TrimSpace(string(b)))
+	}
+
+	var items []struct {
+		Title      string `json:"title"`
+		HrefStatus int    `json:"href_status"`
+		HrefURL    string `json:"href_url"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+		return "", "", err
+	}
+	if len(items) == 0 {
+		return "", "", nil
+	}
+
+	first := items[0]
+	title = strings.TrimSpace(first.Title)
+	link = strings.TrimSpace(first.HrefURL)
+	_ = first.HrefStatus
+	return title, link, nil
+}
+
+func (m *Monitor) sendWechatPush(ctx context.Context, channelKey string, head string, body string) error {
 	channelKey = strings.TrimSpace(channelKey)
 	if channelKey == "" {
 		return errors.New("ChannelKey 不能为空")
 	}
+	head = strings.TrimSpace(head)
+	if head == "" {
+		head = "消息通知"
+	}
+	body = strings.TrimSpace(body)
 
 	payload := map[string]string{
 		"ChannelKey": channelKey,
-		"Head":       "天龙发公告了",
-		"Body":       title,
+		"Head":       head,
+		"Body":       body,
 	}
 
 	b, err := json.Marshal(payload)

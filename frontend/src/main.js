@@ -79,8 +79,9 @@ async function refreshStatus() {
         const s = await GetStatus();
         setButtons(s.running);
         const checked = s.lastChecked ? `，最近检查：${s.lastChecked}` : '';
-        const title = s.lastTitle ? `，最新标题：${s.lastTitle}` : '';
-        statusEl.innerText = `状态：${s.running ? '运行中' : '已停止'}${checked}${title}`;
+        const announce = s.lastTitle ? `，公告：${s.lastTitle}` : '';
+        const act = s.lastActivityTitle ? `，活动：${s.lastActivityTitle}` : '';
+        statusEl.innerText = `状态：${s.running ? '运行中' : '已停止'}${checked}${announce}${act}`;
     } catch (e) {
         statusEl.innerText = '状态：获取失败';
         appendLog(String(e));
