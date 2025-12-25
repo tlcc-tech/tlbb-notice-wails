@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Release version
-VERSION="1.0.10"
+# Release version (single source: wails.json -> info.productVersion)
+VERSION="$(sed -nE 's/.*"productVersion"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' wails.json | head -n 1)"
+if [[ -z "${VERSION}" ]]; then
+  VERSION="dev"
+fi
 
 # Build macOS universal .app
 wails build -platform darwin/universal -clean -ldflags "-X main.AppVersion=${VERSION}"

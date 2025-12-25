@@ -2,7 +2,7 @@ import './style.css';
 import './app.css';
 
 import { EventsOn, WindowHide } from '../wailsjs/runtime/runtime';
-import { GetAppInfo, GetStatus, QuitApp, StartMonitoring, StopMonitoring } from '../wailsjs/go/main/App';
+import { GetAppInfo, GetSettings, GetStatus, QuitApp, StartMonitoring, StopMonitoring } from '../wailsjs/go/main/App';
 
 document.querySelector('#app').innerHTML = `
     <div class="container">
@@ -58,9 +58,44 @@ const closePromptMinBtn = document.getElementById('closePromptMinBtn');
 const closePromptExitBtn = document.getElementById('closePromptExitBtn');
 const closePromptCancelBtn = document.getElementById('closePromptCancelBtn');
 
+const MAX_LOG_LINES = 2000;
+const logLines = [];
+
+function formatRelativeTime(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+    const diffMs = Date.now() - date.getTime();
+    if (diffMs < 0) return '刚刚';
+    const sec = Math.floor(diffMs / 1000);
+    if (sec < 10) return '刚刚';
+    if (sec < 60) return `${sec}秒前`;
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min}分钟前`;
+    const hour = Math.floor(min / 60);
+    if (hour < 24) return `${hour}小时前`;
+    const day = Math.floor(hour / 24);
+    return `${day}天前`;
+}
+
+function formatLocalTime(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+    });
+}
+
 function appendLog(line) {
     if (!line) return;
-    logEl.value += (logEl.value ? '\n' : '') + line;
+    logLines.push(line);
+    if (logLines.length > MAX_LOG_LINES) {
+        logLines.splice(0, logLines.length - MAX_LOG_LINES);
+    }
+    logEl.value = logLines.join('\n');
     logEl.scrollTop = logEl.scrollHeight;
 }
 
@@ -78,7 +113,14 @@ async function refreshStatus() {
     try {
         const s = await GetStatus();
         setButtons(s.running);
-        const checked = s.lastChecked ? `，最近检查：${s.lastChecked}` : '';
+        let checked = '';
+        if (s.lastChecked) {
+            const d = new Date(s.lastChecked);
+            const local = formatLocalTime(d);
+            const rel = formatRelativeTime(d);
+            const extra = rel ? `（${rel}）` : '';
+            checked = local ? `，最近检查：${local}${extra}` : `，最近检查：${s.lastChecked}`;
+        }
         const announce = s.lastTitle ? `，公告：${s.lastTitle}` : '';
         const act = s.lastActivityTitle ? `，活动：${s.lastActivityTitle}` : '';
         statusEl.innerText = `状态：${s.running ? '运行中' : '已停止'}${checked}${announce}${act}`;
@@ -155,6 +197,17 @@ EventsOn('app:close-requested', () => {
 });
 
 channelKeyEl.focus();
+
+// 自动回填上次保存的 ChannelKey
+GetSettings().then((s) => {
+    const saved = (s?.channelKey || '').trim();
+    if (saved && !(channelKeyEl.value || '').trim()) {
+        channelKeyEl.value = saved;
+    }
+}).catch((e) => {
+    appendLog(String(e));
+});
+
 GetAppInfo().then((info) => {
     if (authorEl) authorEl.innerText = info.author || '';
     if (versionEl) versionEl.innerText = info.version || '';

@@ -68,6 +68,10 @@ func (a *App) GetStatus() MonitorStatus {
 	return a.monitor.Status()
 }
 
+func (a *App) GetSettings() AppSettings {
+	return a.monitor.GetSettings()
+}
+
 func (a *App) GetAppInfo() AppInfo {
 	return AppInfo{Name: AppName, Author: AppAuthor, Version: AppVersion}
 }
