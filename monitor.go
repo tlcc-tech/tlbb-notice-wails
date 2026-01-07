@@ -48,7 +48,7 @@ type checker interface {
 
 type announcementChecker struct{}
 
-func (announcementChecker) Name() string    { return "公告" }
+func (announcementChecker) Name() string     { return "公告" }
 func (announcementChecker) PushHead() string { return "天龙发公告了" }
 
 func (announcementChecker) FetchLatest(ctx context.Context, client *http.Client) (latestItem, error) {
@@ -105,7 +105,7 @@ func (announcementChecker) FetchLatest(ctx context.Context, client *http.Client)
 
 type activityChecker struct{}
 
-func (activityChecker) Name() string    { return "活动" }
+func (activityChecker) Name() string     { return "活动" }
 func (activityChecker) PushHead() string { return "天龙有新活动了" }
 
 func (activityChecker) FetchLatest(ctx context.Context, client *http.Client) (latestItem, error) {
@@ -147,6 +147,48 @@ func (activityChecker) FetchLatest(ctx context.Context, client *http.Client) (la
 	return latestItem{Key: key, Title: title, Link: link}, nil
 }
 
+func (activityChecker) FetchAll(ctx context.Context, client *http.Client) ([]latestItem, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, activityJSONURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, errors.New("HTTP " + resp.Status + ": " + strings.TrimSpace(string(b)))
+	}
+
+	var items []struct {
+		Title      string `json:"title"`
+		HrefStatus int    `json:"href_status"`
+		HrefURL    string `json:"href_url"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+		return nil, err
+	}
+
+	out := make([]latestItem, 0, len(items))
+	for _, it := range items {
+		_ = it.HrefStatus
+		title := strings.TrimSpace(it.Title)
+		link := strings.TrimSpace(it.HrefURL)
+		key := strings.TrimSpace(link)
+		if key == "" {
+			key = strings.TrimSpace(title)
+		}
+		if key == "" {
+			continue
+		}
+		out = append(out, latestItem{Key: key, Title: title, Link: link})
+	}
+	return out, nil
+}
+
 type Monitor struct {
 	mu sync.Mutex
 
@@ -161,6 +203,7 @@ type Monitor struct {
 	lastActKey   string
 	lastActTitle string
 	lastActLink  string
+	actSeenKeys  []string
 	lastChecked  time.Time
 
 	httpClient *http.Client
@@ -187,6 +230,7 @@ func (m *Monitor) Attach(appCtx context.Context) {
 		m.lastActKey = strings.TrimSpace(s.LastActivityKey)
 		m.lastActTitle = strings.TrimSpace(s.LastActivityTitle)
 		m.lastActLink = strings.TrimSpace(s.LastActivityLink)
+		m.actSeenKeys = append([]string(nil), s.ActivitySeenKeys...)
 
 		// 兼容旧数据：若只有 title 没有 key，则用 title 作为 key。
 		if m.lastKey == "" {
@@ -194,6 +238,9 @@ func (m *Monitor) Attach(appCtx context.Context) {
 		}
 		if m.lastActKey == "" {
 			m.lastActKey = m.lastActTitle
+		}
+		if len(m.actSeenKeys) == 0 && m.lastActKey != "" {
+			m.actSeenKeys = []string{m.lastActKey}
 		}
 	}
 }
@@ -239,12 +286,13 @@ func (m *Monitor) Start(channelKey string) error {
 	appCtx := m.appCtx
 	// 持久化 ChannelKey（允许为空，表示禁用推送）
 	_ = saveSettings(persistedSettings{
-		ChannelKey:         m.channelKey,
-		LastAnnounceKey:    m.lastKey,
-		LastAnnounceTitle:  m.lastTitle,
-		LastActivityKey:    m.lastActKey,
-		LastActivityTitle:  m.lastActTitle,
-		LastActivityLink:   m.lastActLink,
+		ChannelKey:        m.channelKey,
+		LastAnnounceKey:   m.lastKey,
+		LastAnnounceTitle: m.lastTitle,
+		LastActivityKey:   m.lastActKey,
+		LastActivityTitle: m.lastActTitle,
+		LastActivityLink:  m.lastActLink,
+		ActivitySeenKeys:  append([]string(nil), m.actSeenKeys...),
 	})
 	m.mu.Unlock()
 
@@ -310,15 +358,20 @@ func (m *Monitor) randomIntervalSec() int {
 func (m *Monitor) persistSnapshot() {
 	m.mu.Lock()
 	s := persistedSettings{
-		ChannelKey:         m.channelKey,
-		LastAnnounceKey:    m.lastKey,
-		LastAnnounceTitle:  m.lastTitle,
-		LastActivityKey:    m.lastActKey,
-		LastActivityTitle:  m.lastActTitle,
-		LastActivityLink:   m.lastActLink,
+		ChannelKey:        m.channelKey,
+		LastAnnounceKey:   m.lastKey,
+		LastAnnounceTitle: m.lastTitle,
+		LastActivityKey:   m.lastActKey,
+		LastActivityTitle: m.lastActTitle,
+		LastActivityLink:  m.lastActLink,
+		ActivitySeenKeys:  append([]string(nil), m.actSeenKeys...),
 	}
 	m.mu.Unlock()
 	_ = saveSettings(s)
+}
+
+type activityAllFetcher interface {
+	FetchAll(ctx context.Context, client *http.Client) ([]latestItem, error)
 }
 
 func (m *Monitor) checkOnce(ctx context.Context, appCtx context.Context) error {
@@ -331,6 +384,7 @@ func (m *Monitor) checkOnce(ctx context.Context, appCtx context.Context) error {
 	channelKey := m.channelKey
 	prevAnnKey := m.lastKey
 	prevActKey := m.lastActKey
+	seenAct := append([]string(nil), m.actSeenKeys...)
 	m.mu.Unlock()
 
 	allFailed := true
@@ -389,33 +443,97 @@ func (m *Monitor) checkOnce(ctx context.Context, appCtx context.Context) error {
 			prevAnnKey = item.Key
 
 		case "活动":
-			if strings.TrimSpace(prevActKey) == "" {
+			af, ok := c.(activityAllFetcher)
+			if !ok {
+				// 理论不会发生；兜底：仍按单条逻辑处理
+				if item.Key == prevActKey {
+					m.emitLog(appCtx, "INFO", "活动未发生变化: "+item.Title)
+					continue
+				}
+				m.emitLog(appCtx, "INFO", "检测到新活动: "+item.Title)
 				m.mu.Lock()
 				m.lastActKey = item.Key
 				m.lastActTitle = item.Title
 				m.lastActLink = item.Link
 				m.mu.Unlock()
 				m.persistSnapshot()
-				m.emitLog(appCtx, "INFO", "已获取当前最新活动(基线): "+item.Title)
 				prevActKey = item.Key
 				continue
 			}
-			if item.Key == prevActKey {
-				m.emitLog(appCtx, "INFO", "活动未发生变化: "+item.Title)
+
+			all, err := af.FetchAll(ctx, m.httpClient)
+			if err != nil {
+				m.emitLog(appCtx, "ERROR", "活动检查失败: "+err.Error())
+				continue
+			}
+			if len(all) == 0 {
+				m.emitLog(appCtx, "WARN", "未找到最新活动标题")
 				continue
 			}
 
-			m.emitLog(appCtx, "INFO", "检测到新活动: "+item.Title)
+			// 基线：首次运行时把整个列表作为已见集合，避免第一次就打开/推送。
+			if strings.TrimSpace(prevActKey) == "" {
+				keys := make([]string, 0, len(all))
+				for _, it := range all {
+					keys = append(keys, it.Key)
+				}
+				m.mu.Lock()
+				m.lastActKey = all[0].Key
+				m.lastActTitle = all[0].Title
+				m.lastActLink = all[0].Link
+				m.actSeenKeys = keys
+				m.mu.Unlock()
+				m.persistSnapshot()
+				m.emitLog(appCtx, "INFO", "已获取当前最新活动(基线): "+all[0].Title)
+				prevActKey = all[0].Key
+				seenAct = append([]string(nil), keys...)
+				continue
+			}
+
+			seenSet := map[string]struct{}{}
+			for _, k := range seenAct {
+				k = strings.TrimSpace(k)
+				if k == "" {
+					continue
+				}
+				seenSet[k] = struct{}{}
+			}
+
+			var newItems []latestItem
+			for _, it := range all {
+				if _, ok := seenSet[it.Key]; !ok {
+					newItems = append(newItems, it)
+				}
+			}
+
+			if len(newItems) == 0 {
+				m.emitLog(appCtx, "INFO", "活动未发现新增: "+all[0].Title)
+				continue
+			}
+
+			picked := newItems[len(newItems)-1]
+			m.emitLog(appCtx, "INFO", "检测到新活动: "+picked.Title)
+
+			// 更新已见列表并限制长度
+			for _, it := range newItems {
+				seenAct = append(seenAct, it.Key)
+			}
+			const maxSeen = 200
+			if len(seenAct) > maxSeen {
+				seenAct = seenAct[len(seenAct)-maxSeen:]
+			}
+
 			m.mu.Lock()
-			m.lastActKey = item.Key
-			m.lastActTitle = item.Title
-			m.lastActLink = item.Link
+			m.lastActKey = picked.Key
+			m.lastActTitle = picked.Title
+			m.lastActLink = picked.Link
+			m.actSeenKeys = append([]string(nil), seenAct...)
 			m.mu.Unlock()
 			m.persistSnapshot()
 
-			if strings.TrimSpace(item.Link) != "" {
-				runtime.BrowserOpenURL(appCtx, item.Link)
-				m.emitLog(appCtx, "INFO", "已打开活动链接: "+item.Link)
+			if strings.TrimSpace(picked.Link) != "" {
+				runtime.BrowserOpenURL(appCtx, picked.Link)
+				m.emitLog(appCtx, "INFO", "已打开活动链接: "+picked.Link)
 			} else {
 				m.emitLog(appCtx, "WARN", "未解析到活动链接")
 			}
@@ -423,13 +541,13 @@ func (m *Monitor) checkOnce(ctx context.Context, appCtx context.Context) error {
 			if strings.TrimSpace(channelKey) == "" {
 				m.emitLog(appCtx, "INFO", "未配置 ChannelKey，已跳过微信推送")
 			} else {
-				if err := m.sendWechatPush(ctx, channelKey, c.PushHead(), item.Title); err != nil {
+				if err := m.sendWechatPush(ctx, channelKey, c.PushHead(), picked.Title); err != nil {
 					m.emitLog(appCtx, "ERROR", "微信推送失败: "+err.Error())
 				} else {
 					m.emitLog(appCtx, "INFO", "微信推送发送成功")
 				}
 			}
-			prevActKey = item.Key
+			prevActKey = picked.Key
 		}
 	}
 
