@@ -23,7 +23,7 @@ const (
 	minIntervalSec  = 300
 	maxIntervalSec  = 600
 
-	wechatPushURL = "http://push.ijingniu.cn/push"
+	xizhiDefaultHost = "xizhi.qqoq.net"
 )
 
 type MonitorStatus struct {
@@ -298,7 +298,7 @@ func (m *Monitor) Start(channelKey string) error {
 
 	m.emitLog(appCtx, "INFO", "监控已启动")
 	if channelKey == "" {
-		m.emitLog(appCtx, "WARN", "未填写 ChannelKey：将跳过微信推送，仅打开链接")
+		m.emitLog(appCtx, "WARN", "未填写推送链接/Key：将跳过微信推送，仅打开链接")
 	}
 
 	go func() {
@@ -432,7 +432,7 @@ func (m *Monitor) checkOnce(ctx context.Context, appCtx context.Context) error {
 			}
 
 			if strings.TrimSpace(channelKey) == "" {
-				m.emitLog(appCtx, "INFO", "未配置 ChannelKey，已跳过微信推送")
+				m.emitLog(appCtx, "INFO", "未配置推送链接/Key，已跳过微信推送")
 			} else {
 				if err := m.sendWechatPush(ctx, channelKey, c.PushHead(), item.Title); err != nil {
 					m.emitLog(appCtx, "ERROR", "微信推送失败: "+err.Error())
@@ -539,7 +539,7 @@ func (m *Monitor) checkOnce(ctx context.Context, appCtx context.Context) error {
 			}
 
 			if strings.TrimSpace(channelKey) == "" {
-				m.emitLog(appCtx, "INFO", "未配置 ChannelKey，已跳过微信推送")
+				m.emitLog(appCtx, "INFO", "未配置推送链接/Key，已跳过微信推送")
 			} else {
 				if err := m.sendWechatPush(ctx, channelKey, c.PushHead(), picked.Title); err != nil {
 					m.emitLog(appCtx, "ERROR", "微信推送失败: "+err.Error())
@@ -557,16 +557,10 @@ func (m *Monitor) checkOnce(ctx context.Context, appCtx context.Context) error {
 	return nil
 }
 
-type wechatPushPayload struct {
-	ChannelKey string `json:"ChannelKey"`
-	Head       string `json:"Head"`
-	Body       string `json:"Body"`
-}
-
 func (m *Monitor) sendWechatPush(ctx context.Context, channelKey string, head string, body string) error {
 	channelKey = strings.TrimSpace(channelKey)
 	if channelKey == "" {
-		return errors.New("ChannelKey 不能为空")
+		return errors.New("推送链接/Key 不能为空")
 	}
 	head = strings.TrimSpace(head)
 	if head == "" {
@@ -574,20 +568,16 @@ func (m *Monitor) sendWechatPush(ctx context.Context, channelKey string, head st
 	}
 	body = strings.TrimSpace(body)
 
-	payload := wechatPushPayload{ChannelKey: channelKey, Head: head, Body: body}
-
-	b, err := json.Marshal(payload)
+	pushURL, err := buildXizhiPushURL(channelKey, head, body)
 	if err != nil {
 		return err
 	}
 
 	pushClient := &http.Client{Timeout: 10 * time.Second}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, wechatPushURL, bytes.NewReader(b))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pushURL, nil)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", "application/json; charset=UTF-8")
-	req.Header.Set("Host", "push.ijingniu.cn")
 
 	resp, err := pushClient.Do(req)
 	if err != nil {
@@ -601,6 +591,59 @@ func (m *Monitor) sendWechatPush(ctx context.Context, channelKey string, head st
 	}
 
 	return nil
+}
+
+func buildXizhiPushURL(pushInput string, title string, content string) (string, error) {
+	pushInput = strings.TrimSpace(pushInput)
+	if pushInput == "" {
+		return "", errors.New("推送链接/Key 不能为空")
+	}
+
+	title = strings.TrimSpace(title)
+	if title == "" {
+		title = "消息通知"
+	}
+	content = strings.TrimSpace(content)
+
+	// 1) 允许直接粘贴完整链接，例如：
+	// https://xizhi.qqoq.net/XZxxxx.send
+	if strings.Contains(pushInput, "://") {
+		u, err := url.Parse(pushInput)
+		if err != nil {
+			return "", err
+		}
+		if u.Scheme == "" || u.Host == "" {
+			return "", errors.New("无效推送链接")
+		}
+		q := u.Query()
+		q.Set("title", title)
+		q.Set("content", content)
+		u.RawQuery = q.Encode()
+		return u.String(), nil
+	}
+
+	// 2) 允许只填 key 或填 "XZxxxx.send"
+	key := strings.TrimSpace(pushInput)
+	if strings.Contains(key, "/") {
+		parts := strings.Split(key, "/")
+		key = strings.TrimSpace(parts[len(parts)-1])
+	}
+	key = strings.TrimSuffix(key, ".send")
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return "", errors.New("无效推送 key")
+	}
+
+	u := &url.URL{
+		Scheme: "https",
+		Host:   xizhiDefaultHost,
+		Path:   "/" + key + ".send",
+	}
+	q := u.Query()
+	q.Set("title", title)
+	q.Set("content", content)
+	u.RawQuery = q.Encode()
+	return u.String(), nil
 }
 
 func (m *Monitor) emitLog(appCtx context.Context, level string, msg string) {

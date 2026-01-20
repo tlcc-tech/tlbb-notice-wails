@@ -1,7 +1,7 @@
 import './style.css';
 import './app.css';
 
-import { EventsOn, WindowHide } from '../wailsjs/runtime/runtime';
+import { BrowserOpenURL, EventsOn, WindowHide } from '../wailsjs/runtime/runtime';
 import { GetAppInfo, GetSettings, GetStatus, QuitApp, StartMonitoring, StopMonitoring } from '../wailsjs/go/main/App';
 
 document.querySelector('#app').innerHTML = `
@@ -9,7 +9,7 @@ document.querySelector('#app').innerHTML = `
         <h1 class="title">怀旧天龙公告检测</h1>
 
         <div class="input-box">
-            <input class="input" id="channelKey" type="text" autocomplete="off" placeholder="ChannelKey（可选，不填则不推送）" />
+            <input class="input" id="channelKey" type="text" autocomplete="off" placeholder="微信单点推送链接（例如：https://xizhi.qqoq.net/XZxxxx.send，可选）" />
             <button class="btn" id="startBtn">开始监控</button>
             <button class="btn" id="stopBtn">结束监控</button>
             <button class="btn" id="minToTrayBtn" style="display:none;">最小化到托盘</button>
@@ -22,7 +22,8 @@ document.querySelector('#app').innerHTML = `
         <div class="footer">
             <div class="footer-left">
                 <div>说明：自动检测公告列表，新公告会打开浏览器进入公告页。</div>
-                <div>操作：点击【开始监控】启动；需要推送则填写 ChannelKey；点击【结束监控】停止。</div>
+                <div>操作：点击【开始监控】启动；需要推送则填写微信单点推送链接/Key；点击【结束监控】停止。</div>
+                <button class="footer-btn" id="getPushLinkBtn" type="button">如何获取微信推送链接？</button>
                 <div>作者：<span id="author"></span>　版本：<span id="version"></span></div>
             </div>
             <div class="footer-right">
@@ -52,6 +53,7 @@ const statusEl = document.getElementById('status');
 const logEl = document.getElementById('log');
 const authorEl = document.getElementById('author');
 const versionEl = document.getElementById('version');
+const getPushLinkBtn = document.getElementById('getPushLinkBtn');
 
 const closePromptMask = document.getElementById('closePromptMask');
 const closePromptMinBtn = document.getElementById('closePromptMinBtn');
@@ -196,9 +198,17 @@ EventsOn('app:close-requested', () => {
     showClosePrompt();
 });
 
+getPushLinkBtn?.addEventListener('click', () => {
+    try {
+        BrowserOpenURL('https://xz.qqoq.net/');
+    } catch (e) {
+        appendLog(String(e));
+    }
+});
+
 channelKeyEl.focus();
 
-// 自动回填上次保存的 ChannelKey
+// 自动回填上次保存的推送链接/Key
 GetSettings().then((s) => {
     const saved = (s?.channelKey || '').trim();
     if (saved && !(channelKeyEl.value || '').trim()) {

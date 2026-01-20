@@ -55,6 +55,21 @@
   min-width: 260px;
 }
 
+.footer-btn {
+  margin-top: 8px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #2b6cb0;
+  cursor: pointer;
+  text-decoration: underline;
+  font-size: 14px;
+}
+
+.footer-btn:hover {
+  opacity: 0.9;
+}
+
 .footer-right {
   display: flex;
   gap: 12px;
