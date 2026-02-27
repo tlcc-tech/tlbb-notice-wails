@@ -22,6 +22,10 @@ type persistedSettings struct {
 	LastActivityLink  string `json:"lastActivityLink"`
 	ActivitySeenKeys  []string `json:"activitySeenKeys,omitempty"`
 
+	LastForumKey   string `json:"lastForumKey"`
+	LastForumTitle string `json:"lastForumTitle"`
+	LastForumLink  string `json:"lastForumLink"`
+
 	UpdatedAt string `json:"updatedAt"`
 }
 

@@ -1,12 +1,28 @@
 # tlbb-notice（Wails）
 
-一个极简桌面小工具：监控天龙公告列表，发现新公告后自动打开链接并发微信推送；提供【开始监控】【结束监控】按钮与日志输出界面。
+一个极简桌面小工具：监控天龙公告/活动/论坛，发现更新后自动打开链接并发微信推送；提供【开始监控】【结束监控】按钮与日志输出界面。
 
 ## 环境要求
 
-- Go（建议使用 Homebrew 安装的新版本 Go）
+- Go 1.24+（建议使用 Homebrew 安装）
 - Node.js 18+
 - Wails CLI v2
+
+macOS 建议确保 PATH 优先使用 Homebrew 的 Go：
+
+```bash
+echo 'export PATH="/opt/homebrew/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+go version
+```
+
+若 `go version` 仍是旧版本（例如 1.13），请先检查：
+
+```bash
+which go
+```
+
+应为 `/opt/homebrew/bin/go`。
 
 如果在国内网络环境，建议配置 Go 代理：
 
